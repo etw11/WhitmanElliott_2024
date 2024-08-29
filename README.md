@@ -1,6 +1,6 @@
 **Code repository for:**
 
-Whitman ET, Elliott ML, Knodt AR, Abraham WC, Anderson TJ, Cutfield N, Hogan S, Ireland D, Melzer TR, Ramrakha S, Sugden K, Theodore R, Williams BS, Caspi A, Moffitt TE, & Hariri AR for the Alzheimer's Disease Neuroimaging Initiative. (2024). An estimate of the longitudinal pace of aging from a single brain scan predicts dementia conversion, morbidity, and mortality.
+Whitman ET, Elliott ML, Knodt AR, Abraham WC, Anderson TJ, Cutfield N, Hogan S, Ireland D, Melzer TR, Ramrakha S, Sugden K, Theodore R, Williams BS, Caspi A, Moffitt TE, & Hariri AR for the Alzheimer's Disease Neuroimaging Initiative. (2024). An estimate of the longitudinal pace of aging from a single brain scan predicts dementia conversion, morbidity, and mortality. https://www.biorxiv.org/content/10.1101/2024.08.19.608305v1
 
 Code used to tune, train, validate, and intepret the DunedinPACNI algorithm in the Dunedin Study is in the 'dunedin' folder.
 
