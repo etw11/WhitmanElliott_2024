@@ -9,3 +9,5 @@ Code used to export DunedinPACNI to the Human Connectome Project and establish i
 Code used to export DunedinPACNI to the Alzheimer's Disease Neuroimaging Initiative and test its assocaition with cognition, cognitive decline, hippocampal atrophy, and years of education is in the 'adni' folder.
 
 Code used to export DunedinPACNI to the UK Biobank and test its assocaition with cognition, hippocampal atrophy, disease risk, mortality, income, and education is in the 'ukb' folder.
+
+Code used to export DunedinPACNI to the BrainLat dataset and test its association with cognitive impairment is in the 'brainlat' folder.
