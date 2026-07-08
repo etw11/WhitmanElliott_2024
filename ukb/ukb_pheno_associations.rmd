@@ -1,0 +1,226 @@
+---
+title: "UKB_PACNI_setUpPhenos_240418"
+output: html_document
+date: "2024-04-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+
+#Grab phenos
+ukb_pacni_pheno <- read_rds("/ncf/sba08/Triarchy_OA/Max/UKBanalyses/PACNI/data/ukb_allPhenos_imagingSubs_240418.rds")
+
+
+```
+
+```{r frailty}
+
+###Organize data and create composite variables
+###See Manuscripts/PACNI/Lists/ukb_variable_ids_details.txt for variable info
+
+##Create Fried Frailty Index using criteria from https://doi.org/10.1016/S2589-7500(23)00043-2
+ukb_pacni_pheno$f.2306.2.0 %>% table()
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(Fried_lost_weight = case_when(
+    f.2306.2.0 == "Yes - lost weight" ~ 1,
+    TRUE ~ 0
+  ))
+
+ukb_pacni_pheno$f.2080.2.0 %>% table()
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(Fried_exhaustion = case_when(
+    f.2080.2.0 %in% c("More than half the days", "Nearly every day") ~ 1,
+    TRUE ~ 0
+  ))
+
+ukb_pacni_pheno$f.924.2.0 %>% table()
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(Fried_walking = case_when(
+    f.924.2.0 %in% c("Slow pace") ~ 1,
+    TRUE ~ 0
+  ))
+ukb_pacni_pheno$Fried_walking %>% table()
+
+###Coded this by all the ways to be active or ambiguous answers are not frail and the rest are frail
+ukb_pacni_pheno$f.6164.2.0 %>% table()
+ukb_pacni_pheno$f.1011.2.0 %>% table()
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(Fried_activity = case_when(
+    f.6164.2.0 %in% c("Prefer not to answer", "Walking for pleasure (not as a means of transport)", "Other exercises (eg: swimming, cycling, keep fit, bowling)", "Strenuous sports", "Heavy DIY (eg: weeding, lawn mowing, carpentry, digging)")  ~ 0,
+    f.6164.2.0 == "Light DIY (eg: pruning, watering the lawn)" & f.1011.2.0 %in% c("Prefer not to answer","Do not know", "2-3 times a week", "4-5 times a week", "Every day")  ~ 0,
+    TRUE ~ 1
+  ))
+ukb_pacni_pheno$Fried_activity %>% table()
+
+#make average grip strength variable from left and right
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(gripStrength_avg = ifelse(!is.na(f.46.2.0) & !is.na(f.47.2.0), (f.46.2.0 + f.47.2.0) / 2,
+                             ifelse(!is.na(f.46.2.0), f.46.2.0, f.47.2.0)))
+##Use BMI and sex cutoffs to define grip frailty
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(Fried_gripStrength = case_when(
+    # Males
+    f.31.0.0 == "Male" & f.21001.2.0 <= 24 & gripStrength_avg <= 29 ~ 1,
+    f.31.0.0 == "Male" & f.21001.2.0 > 24 & f.21001.2.0 <= 28 & gripStrength_avg <= 30 ~ 1,
+    f.31.0.0 == "Male" & f.21001.2.0 > 28 & gripStrength_avg <= 32 ~ 1,
+    
+    # Females
+    f.31.0.0 == "Female" & f.21001.2.0 <= 23 & gripStrength_avg <= 17 ~ 1,
+    f.31.0.0 == "Female" & f.21001.2.0 > 23 & f.21001.2.0 <= 26 & gripStrength_avg <= 17.3 ~ 1,
+    f.31.0.0 == "Female" & f.21001.2.0 > 26 & f.21001.2.0 <= 29 & gripStrength_avg <= 18 ~ 1,
+    f.31.0.0 == "Female" & f.21001.2.0 > 29 & gripStrength_avg <= 21 ~ 1,
+    
+    TRUE ~ 0  # Default case, not meeting any frailty criteria
+  ))
+ukb_pacni_pheno$Fried_gripStrength %>% table()
+
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(friedFrailtyIndex = Fried_lost_weight + Fried_exhaustion + Fried_walking + Fried_activity + Fried_gripStrength)
+ukb_pacni_pheno$friedFrailtyIndex %>% table()
+
+```
+
+
+```{r mortality and health, echo=FALSE}
+
+###Mortality
+nrow(ukb_pacni_pheno) - sum(is.na((ukb_pacni_pheno$`f.40000.0.0`)))
+
+ukb_pacni_pheno<-ukb_pacni_pheno %>% mutate(ageAtDec2022 = as.numeric(ymd("2023-12-31") - birthday)/365.25)
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(died = as.numeric(!is.na(ukb_pacni_pheno$`f.40007.0.0`), timeFromScanToDeath = case_when(!is.na(f.40007.0.0) ~ f.40007.0.0 - ageAtScan, TRUE ~ ageAtDec2022 - ageAtScan)))
+
+###Stroke
+##Number of Strokes
+nrow(ukb_pacni_pheno) - sum(is.na((ukb_pacni_pheno$`f.42006.0.0`)))
+###Make analyses variables
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(ageAtStroke = as.numeric((f.42006.0.0 - birthday)/365.25))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(timeFromScanToStroke = ageAtStroke - ageAtScan)
+###Remove people who had stroke onset before scan
+#ukb_pacni_pheno <- ukb_pacni_pheno %>% filter(timeFromScanToStroke > 0 | is.na(timeFromScanToStroke))
+
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(timeFromScanToStroke = case_when(!is.na(ageAtStroke) ~ ageAtStroke - ageAtScan, TRUE ~ ageAtDec2022 - ageAtScan))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(stroke = as.numeric(!is.na(ukb_pacni_pheno$`f.42006.0.0`)))
+
+
+
+########################################################
+############# Heart Attack ############################
+########################################################
+
+###Number of Heart Attacks
+nrow(ukb_pacni_pheno) - sum(is.na((ukb_pacni_pheno$f.42000.0.0)))
+
+###Make analyses variables
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(ageAtHA = as.numeric((f.42000.0.0 - birthday)/365.25))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(timeFromScanToHA = ageAtHA - ageAtScan)
+###Remove people who had HA onset before scan
+#ukb_pacni_pheno <- ukb_pacni_pheno %>% filter(timeFromScanToHA > 0 | is.na(timeFromScanToHA))
+
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(timeFromScanToHA = case_when(!is.na(ageAtHA) ~ ageAtHA - ageAtScan, TRUE ~ ageAtDec2022 - ageAtScan))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(HA = as.numeric(!is.na(ukb_pacni_pheno$`f.42000.0.0`)))
+
+########################################################
+############# COPD ############################
+########################################################
+
+###Number of COPD
+nrow(ukb_pacni_pheno) - sum(is.na((ukb_pacni_pheno$f.42016.0.0)))
+
+###Make analyses variables
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(ageAtCOPD = as.numeric((f.42016.0.0 - birthday)/365.25))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(timeFromScanToCOPD = ageAtCOPD - ageAtScan)
+###Remove people who had COPD onset before scan
+#ukb_pacni_pheno <- ukb_pacni_pheno %>% filter(timeFromScanToCOPD > 0 | is.na(timeFromScanToCOPD))
+
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(timeFromScanToCOPD = case_when(!is.na(ageAtCOPD) ~ ageAtCOPD - ageAtScan, TRUE ~ ageAtDec2022 - ageAtScan))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(COPD = as.numeric(!is.na(ukb_pacni_pheno$`f.42016.0.0`)))
+
+########################################################
+############# Dementia ############################
+########################################################
+
+###Number of Dementia
+nrow(ukb_pacni_pheno) - sum(is.na((ukb_pacni_pheno$f.42018.0.0)))
+
+###Make analyses variables
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(ageAtDEM = as.numeric((f.42018.0.0 - birthday)/365.25))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(timeFromScanToDEM = ageAtDEM - ageAtScan)
+###Remove people who had Dem onset before scan
+#ukb_pacni_pheno <- ukb_pacni_pheno %>% filter(timeFromScanToDEM > 0 | is.na(timeFromScanToDEM))
+
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(timeFromScanToDEM = case_when(!is.na(ageAtDEM) ~ ageAtDEM - ageAtScan, TRUE ~ ageAtDec2022 - ageAtScan))
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(DEM = as.numeric(!is.na(ukb_pacni_pheno$`f.42018.0.0`)))
+
+
+
+#################################
+#Model Any Disease - PACNI
+###################################
+
+###Make variable for any disease onset and only retain individuals with onset after scan
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(anyAgeDis = stroke | COPD | HA) # | DEM)
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(numAgeDis = stroke + COPD + HA) #+ DEM)
+ukb_pacni_pheno <- ukb_pacni_pheno %>% mutate(timeFromScanToAnyAgeDis = pmin(timeFromScanToStroke, timeFromScanToHA, timeFromScanToCOPD, timeFromScanToDEM))
+
+##Rename cognitive variables
+ukb_pacni_pheno<-rename(ukb_pacni_pheno, RT = f.20023.2.0, PM = f.399.2.2, FluidIQ = f.20016.2.0, WM = f.4282.2.0, TrailsA =  f.6348.2.0, TrailsB =  f.6350.2.0, DSST = f.23324.2.0, VM = f.20197.2.0, Tower = f.21004.2.0, Matrix = f.6373.2.0, Income = f.738.2.0, Edu = f.6138.2.0, Health = f.2178.2.0,BMI = f.21001.2.0, Frailty = friedFrailtyIndex)
+
+
+##Recode overallHealth Rating
+ukb_pacni_pheno <- ukb_pacni_pheno %>%
+  mutate(Health = case_when(
+    Health == "Poor" ~ 1,
+    Health == "Fair" ~ 2,
+    Health == "Good" ~ 3,
+    Health == "Excellent" ~ 4,
+    TRUE ~ NA
+  ))
+
+
+
+```
+
+```{r combine with PACNI estimates and save, echo=FALSE}
+
+##Read brainAGE and PACNI
+brainAge <- read_csv("/ncf/sba08/Triarchy_OA/Max/UKBanalyses/brainAgeR/lists/all_brain_predicted_age_231127.csv")
+pacni <- read_csv("/ncf/sba08/Triarchy_OA/Max/UKBanalyses/PACNI/data/generatePACNI_ukb_240418/pacni_ukb_fs6_240418.csv")
+pacniBA <-left_join(pacni,brainAge, join_by(ID == fullID))
+pacniBA <- pacniBA %>% mutate(brainAgeGap = brainAge - age)
+
+##Read in dataset with imaging BMI
+source("/ncf/sba08/Triarchy_OA/Max/UKBanalyses/PACNI/data/superBrainAging_dataset_230920.r")
+bmiData <- bd %>% select(f.eid,`f.21001.2.0`,`f.21000.0.0`)
+
+ukb_pacni_phenoAssocData<-full_join(pacniBA,ukb_pacni_pheno, join_by(ID))
+
+ukb_pacni_phenoAssocData <- ukb_pacni_phenoAssocData %>% mutate(pacni_scaled = scale(pacni),brainAgeGap_scaled = scale(brainAgeGap))
+
+ukb_pacni_phenoAssocData <- left_join(ukb_pacni_phenoAssocData, bmiData, join_by(eid == f.eid))
+##Check vars
+cor.test(ukb_pacni_phenoAssocData$pacni,ukb_pacni_phenoAssocData$brainAgeGap)
+cor.test(ukb_pacni_phenoAssocData$pacni,ukb_pacni_phenoAssocData$ageAtScan)
+cor.test(ukb_pacni_phenoAssocData$ageAtScan,ukb_pacni_phenoAssocData$brainAgeGap)
+
+##plot
+p1<-ggplot(ukb_pacni_phenoAssocData,aes(x=pacni, y=brainAgeGap)) +
+  geom_point() +
+  #geom_abline(intercept = 0, slope = 1)+
+  labs(x = "PACNI",y = "BrainAgeGap") +
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        title = element_text(size = 15))
+
+
+##write
+write_rds(ukb_pacni_phenoAssocData,"/ncf/sba08/Triarchy_OA/Max/UKBanalyses/PACNI/data/ukb_pacni_phenoAssocData_240419.rds")
+###Run UKB_PACNI_phenoAssociations script next
+
+```
